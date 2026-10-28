@@ -14,12 +14,12 @@
 #define SW 480
 #define SH 272
 #define VRAM_FRAME (BUF_WIDTH * SH * 4)
-#define MAX_3D 54000
-#define MAX_2D 25000
+#define MAX_3D 16000
+#define MAX_2D 8000
 #define VERTEX_TYPE (GU_TEXTURE_32BITF | GU_COLOR_8888 | GU_VERTEX_32BITF | GU_TRANSFORM_3D)
 typedef struct {uint32_t c;float x,y,z;} Vertex;
 typedef struct {float u,v;uint32_t c;float x,y,z;} TexVertex;
-static unsigned int __attribute__((aligned(16))) command_list[262144];
+static unsigned int __attribute__((aligned(16))) command_list[65536];
 static TexVertex __attribute__((aligned(16))) mesh[MAX_3D];
 static Vertex __attribute__((aligned(16))) overlay[MAX_2D];
 /* Actual 32x32 RGBA bitmap detail map; 4KiB, generated once, then shared by
@@ -186,7 +186,7 @@ static void terrain(void){
     the coarse corners, so LOD changes never open cracks in the ground. */
  const float step=72;
  int ix=(int)floorf(cx/step),iz=(int)floorf(cz/step);
- for(int x=ix-8;x<=ix+8;x++)for(int z=iz-8;z<=iz+8;z++){
+ for(int x=ix-4;x<=ix+4;x++)for(int z=iz-4;z<=iz+4;z++){
   float x0=x*step,z0=z*step;
   float dist=distance(x0+36,z0+36);if(dist>580)continue;
   if(!visible(x0+36,player_ground,z0+36,75))continue;
@@ -990,7 +990,7 @@ static void rear_mirrors(const Game *g){
     tri2d(x[0],y[0],x[2],y[2],x[3],y[3],day_color(RGB(47,56,63)));}
   }
   int drawn=0;
-  for(int i=0;i<g->traffic_count&&i<RH_MAX_TRAFFIC&&drawn<6;i++){
+  for(int i=0;i<g->traffic_count&&i<RH_MAX_TRAFFIC&&drawn<3;i++){
    const Traffic *t=&g->cars[i];
    float dx=t->x-g->player.x,dz=t->z-g->player.z,depth=-(dx*fs+dz*fc);
    if(depth<1.5f||depth>120)continue;
@@ -1103,7 +1103,7 @@ static void hud(const Game *g){
   snprintf(buf,sizeof buf,"%s   %.0f Р.", RH_TRUCKS[p->model].name, g->bank);
   label(16,34,buf,1.05f,WHITE);
   rect(8,220,464,44,RGB(18,28,34));
-  label(16,228,"СТИК: ОСМОТР   КРЕСТ: ВЫЕХАТЬ   КРУГ: КОМПЬЮТЕР",1.05f,RGB(247,217,151));
+  label(16,228,"СТИК: ОСМОТР    КРУГ: КОМПЬЮТЕР ЗАКАЗОВ",1.05f,RGB(247,217,151));
   return;
  }
 
@@ -1505,13 +1505,26 @@ void rh_render_frame(const Game *g,int looking){
  }
  camera_eye=eye;camera_forward=(ScePspFVector3){target.x-eye.x,target.y-eye.y,target.z-eye.z};
  float len=sqrtf(camera_forward.x*camera_forward.x+camera_forward.y*camera_forward.y+camera_forward.z*camera_forward.z);
+ if(len<0.001f){camera_forward.x=0;camera_forward.y=0;camera_forward.z=1;len=1;}
  camera_forward.x/=len;camera_forward.y/=len;camera_forward.z/=len;
  float horizontal_len=sqrtf(camera_forward.x*camera_forward.x+camera_forward.z*camera_forward.z);
+ if(horizontal_len<0.001f) horizontal_len=0.001f;
  camera_right=(ScePspFVector3){-camera_forward.z/horizontal_len,0,camera_forward.x/horizontal_len};
  camera_up=(ScePspFVector3){-camera_right.z*camera_forward.y,
    camera_right.z*camera_forward.x-camera_right.x*camera_forward.z,camera_right.x*camera_forward.y};
  prepare_planes();
- terrain();roads();structures();if(!g->on_foot)headlight_ground(cx,cz,p->yaw,3.3f);traffic(g);service_van(g);objective_marker(g);
+ if(g->state==ST_PLAY || g->state==ST_PAUSE || g->state==ST_PHONE || g->state==ST_UNLOAD || g->state==ST_RADIO){
+  /* облегчённый мир для PSP-3000 */
+  terrain();roads();
+  /* structures() тяжёлые — реже */
+  structures();
+  traffic(g);
+  objective_marker(g);
+ }else{
+  /* гараж/компьютер: только пол — без города (фикс GPU на реальной PSP) */
+  float gx=p->x, gz=p->z;
+  flat_quad(gx-22.0f, gz-22.0f, gx+22.0f, gz+22.0f, 0.05f, RGB(50,54,58));
+ }
  if(g->transport_mode!=0&&g->job.stage==1&&g->parked_valid&&distance(g->parked_x,g->parked_z)<475){
   trailer_center_x=g->parked_x-sinf(g->parked_yaw)*RH_TRAILER_HITCH-sinf(g->parked_trailer_yaw)*RH_TRAILER_CENTER;
   trailer_center_z=g->parked_z-cosf(g->parked_yaw)*RH_TRAILER_HITCH-cosf(g->parked_trailer_yaw)*RH_TRAILER_CENTER;
@@ -1521,16 +1534,20 @@ void rh_render_frame(const Game *g,int looking){
  }
  trailer_center_x=p->trailer_x;trailer_center_z=p->trailer_z;
  if(g->on_foot||p->camera==0){
-  if(g->transport_mode==0){personal_rig=!g->on_foot;draw_truck(p->x,p->z,p->yaw,p->model,g->job.stage==1,p->trailer_yaw);personal_rig=0;vehicle_lenses(p->x,rh_vehicle_height(p->x,p->z,p->yaw)+.1f,p->z,p->yaw,1);}
+  if(g->transport_mode==0){personal_rig=!g->on_foot;draw_truck(p->x,p->z,p->yaw,p->model,g->job.stage==1,p->trailer_yaw);personal_rig=0;}
   else draw_light_transport(p->x,p->z,p->yaw,p->trailer_yaw,g->transport_mode,!g->on_foot,g->job.stage==1&&!g->parked_valid);
  }
  if(g->on_foot)draw_person(g->person_x,g->person_z,g->person_yaw,player_ground,g->sim_t);
- nsky=sky(g,sun);precipitation(g);hud(g);
+ if(g->state==ST_GARAGE || g->state==ST_COMPUTER || g->state==ST_MENU){
+  nsky=0; hud(g);
+ }else{
+  nsky=sky(g,sun);precipitation(g);hud(g);
+ }
 
  sceKernelDcacheWritebackRange(mesh,nmesh*sizeof(TexVertex));
  sceKernelDcacheWritebackRange(overlay,nover*sizeof(Vertex));
  sceGuStart(GU_DIRECT,command_list);
- sceGuClearColor(RGB(80,132,167));sceGuClearDepth(0);
+ sceGuClearColor((g->state==ST_GARAGE||g->state==ST_COMPUTER||g->state==ST_MENU)?RGB(28,30,36):RGB(80,132,167));sceGuClearDepth(0);
  sceGuClear(GU_COLOR_BUFFER_BIT|GU_DEPTH_BUFFER_BIT);
  sceGuDisable(GU_DEPTH_TEST);sceGuDisable(GU_CLIP_PLANES);
  sceGuDrawArray(GU_TRIANGLES,GU_COLOR_8888|GU_VERTEX_32BITF|GU_TRANSFORM_2D,nsky,0,overlay);

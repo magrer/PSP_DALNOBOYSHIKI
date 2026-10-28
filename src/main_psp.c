@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include "sim.h"
 #include "render_psp.h"
-#include "sound_psp.h"
-#include "loading_psp.h"
 
 PSP_MODULE_INFO("DalniyReys", PSP_MODULE_USER, 1, 1);
 PSP_MAIN_THREAD_ATTR(THREAD_ATTR_USER | THREAD_ATTR_VFPU);
@@ -31,12 +29,12 @@ static int try_load(Game *g,const char *path){
 }
 int main(int argc,char **argv){
  (void)argc;(void)argv;setup_callbacks();
- scePowerSetClockFrequency(333,333,166);
+ scePowerSetClockFrequency(222,222,111);
  sceCtrlSetSamplingCycle(0);sceCtrlSetSamplingMode(PSP_CTRL_MODE_ANALOG);
  static Game game;rh_new_game(&game);
- (void)(try_load(&game,savepath) || try_load(&game,legacy_savepath) || try_load(&game,"SAVE.DAT"));
+ /* try_load off */
  /* старт: главное меню -> гараж (кнопки: только фронт Креста) */
- game.state = ST_MENU;
+ game.state = ST_GARAGE;
  game.menu_timer = 0;
  game.menu_blink = 1;
  game.paused = 0;
@@ -44,7 +42,9 @@ int main(int argc,char **argv){
  game.garage_cam_yaw = 0.9f;
  game.garage_cam_dist = 14.0f;
  game.garage_cam_height = 5.0f;
- rh_render_init();rh_loading_screen();rh_sound_start();
+ rh_render_init();
+ /* loading/sound временно выкл. для стабильности на 3000 */
+
  unsigned int previous=0,pending=0;unsigned long long tick=sceKernelGetSystemTimeWide();
  float accumulator=0,save_clock=0;
  while(running){
@@ -91,13 +91,8 @@ int main(int argc,char **argv){
   if(steps>0)pending=0;
   if(steps==5)accumulator=0;
   save_clock+=elapsed;
-  if(save_clock>45.0f){
-   if(!rh_save(&game,savepath))rh_save(&game,"SAVE.DAT");
-   save_clock=0;
-  }
-  rh_sound_update(game.player.rpm,game.player.engine_t,game.player.speed_abs,game.player.fuel<.01f);
+  /* autosave off */
   rh_render_frame(&game,in.look);
  }
- if(!rh_save(&game,savepath))rh_save(&game,"SAVE.DAT");
- rh_sound_stop();rh_render_end();sceKernelExitGame();return 0;
+ rh_render_end();sceKernelExitGame();return 0;
 }

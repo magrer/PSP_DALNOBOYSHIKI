@@ -214,19 +214,21 @@ void rh_enter_garage(Game *g){
 }
 
 void rh_leave_garage(Game *g){
- g->state = ST_PLAY;
- /* выезд на дорогу у домашнего города / точки погрузки */
- {
-  int home = ((g->home_city % 4) + 4) % 4;
-  int px = (g->job.stage==0) ? g->job.pickup_x : CITY_GX[home];
-  int pz = (g->job.stage==0) ? g->job.pickup_z : CITY_GZ[home];
-  float wz = pz * RH_ROAD_SPACING;
-  float wx = rh_road_x(px, wz) - 2.5f;
-  rh_set_player(g, wx, wz + 40.0f, 0.0f);
- }
+ /* Без телепорта: стоим там же, где стояли в гараже.
+    Резкий прыжок + полный мир = краш на PSP-3000. */
  g->player.v = 0;
  g->player.speed_abs = 0;
+ g->player.rpm = 800;
  g->player.camera = 0;
+ g->player.reverse = 0;
+ g->player.road_level = 0;
+ g->on_foot = 0;
+ g->transport_mode = 0;
+ g->map_open = 0;
+ g->paused = 0;
+ /* меньше машин на выезде */
+ if(g->traffic_count > 4) g->traffic_count = 4;
+ g->state = ST_PLAY;
 }
 
 void rh_new_game(Game *g){
@@ -252,11 +254,11 @@ void rh_new_game(Game *g){
  g->player.gear=1;
  init_job(g, CITY_GX[1], CITY_GZ[1]);
  g->job.stage = -1; /* нет активного заказа до компьютера */
- g->traffic_count = RH_MAX_TRAFFIC;
+ g->traffic_count = 4;
  if(g->traffic_count > 22) g->traffic_count = 22;
  if(g->traffic_count < 0) g->traffic_count = 0;
  for(int i=0;i<g->traffic_count;i++)spawn_traffic(g,i);
- g->state = ST_MENU;
+ g->state = ST_GARAGE;
  g->menu_timer = 0;
  g->menu_blink = 1;
  g->garage_cam_yaw = 0.9f;
@@ -655,6 +657,7 @@ static void update_traffic(Game *g,float dt){
  }
 }
 float rh_job_target_distance(const Game *g){
+ if(g->job.stage < 0) return 0.0f;
  float x,z;int px=g->job.stage?g->job.dest_x:g->job.pickup_x;
  int pz=g->job.stage?g->job.dest_z:g->job.pickup_z;
  rh_depot(px,pz,&x,&z);return rh_dist2(g->player.x,g->player.z,x,z);
@@ -662,6 +665,7 @@ float rh_job_target_distance(const Game *g){
 void rh_waypoint(const Game *g,float *x,float *z){
  const Player *p=&g->player;
  float spacing=RH_ROAD_SPACING;
+ if(g->job.stage < 0){ *x=p->x; *z=p->z; return; }
  if(g->job.stage==0){rh_depot(g->job.pickup_x,g->job.pickup_z,x,z);return;}
  float gx=g->job.dest_x*spacing,gz=g->job.dest_z*spacing;
  int cx=(int)floorf(p->x/spacing+.5f),cz=(int)floorf(p->z/spacing+.5f);
@@ -800,13 +804,7 @@ static void person_step(Game *g,Controls in,float dt){
 void rh_step(Game *g,Controls in,float dt){
  /* ===== STATE MACHINE ===== */
  if(g->state == ST_MENU){
-  g->menu_timer += dt;
-  if(g->menu_timer > 0.5f){ g->menu_timer = 0; g->menu_blink = !g->menu_blink; }
-  /* авто-осмотр как в ETS2 */
-  g->garage_cam_yaw += 0.35f * dt;
-  if(in.menu_accept){ /* только фронт нажатия Креста, не удержание */
-   rh_enter_garage(g);
-  }
+  rh_enter_garage(g);
   return;
  }
 
@@ -827,11 +825,7 @@ void rh_step(Game *g,Controls in,float dt){
    g->computer_sel = 0;
    return;
   }
-  /* только фронт Креста — иначе удержание с меню сразу выкидывает на улицу */
-  if(in.menu_accept){
-   rh_leave_garage(g);
-   return;
-  }
+  /* выезд только после взятия заказа в компьютере */
   return;
  }
 
