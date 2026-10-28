@@ -1,0 +1,35 @@
+name: PSP Дальний рейс — полный релиз
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests and compile original ELF homebrew
+        run: |
+          ./tests/run_tests.sh
+          ./tests/run_render_tests.sh
+          ./tests/run_stress.sh
+          ./tests/safety_audit.sh
+          python3 tests/check_russian.py
+          docker run --rm --platform linux/amd64 -v "$PWD:/source" -w /source pspdev/pspdev:v20261001 make -j2
+      - name: Install PSP encrypted module builder
+        run: cargo install pspbuild --locked
+      - name: Create and validate encrypted install
+        run: |
+          mkdir -p dist/PSP/GAME/DALREYS
+          pspbuild encrypt EBOOT.PBP -o /tmp/pspbuild-encrypted.pbp -v
+          python3 scripts/compat_pbp.py /tmp/pspbuild-encrypted.pbp assets/compat/PARAM.SFO ICON0.PNG dist/PSP/GAME/DALREYS/EBOOT.PBP
+          pspbuild inspect dist/PSP/GAME/DALREYS/EBOOT.PBP
+          pspbuild verify dist/PSP/GAME/DALREYS/EBOOT.PBP
+          (cd dist && zip -q -r ../DALNIY_REYS_PSP_Install.zip PSP)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DALNIY_REYS_PSP_Install
+          path: DALNIY_REYS_PSP_Install.zip
+          if-no-files-found: error

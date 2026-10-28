@@ -1,0 +1,8 @@
+#include "sim.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdint.h>
+#include <assert.h>
+typedef struct {float x,z,yaw,v,speed_abs,rpm,fuel,odo,damage,trailer_yaw,engine_t,gearbox_t;int gear,model,camera,reverse;float trailer_x,trailer_z,lateral_v,fuel_pending;} P6;
+typedef struct {P6 player;Job job;Traffic cars[RH_MAX_TRAFFIC];int traffic_count,paused,map_open,completed,last_notice,notice_ticks;unsigned int owned_trucks;float bank,drive_time,traffic_t,sim_t,clock_hours;uint32_t rng;int weather,weather_mode,time_mode,settings_row;float weather_next_odo;int service_phase;float service_timer,service_x,service_z,service_yaw;} G6;
+int main(){for(int i=0;i<3;i++){Game g,out;rh_new_game(&g);float z=7200;rh_set_player(&g,rh_road_x(0,z),z,i==1?RH_PI/2:0);g.bank=12345;g.player.fuel_pending=.0003f;g.weather=3;g.weather_mode=4;g.job.stage=1;G6 old;memcpy(&old.player,&g.player,sizeof old.player);memcpy(&old.job,&g.job,sizeof old-sizeof old.player);uint32_t h=2166136261u;for(size_t j=0;j<sizeof old;j++){h^=((unsigned char*)&old)[j];h*=16777619u;}uint32_t head[]={0x52485356,6,h};FILE*f=fopen("/tmp/v6check.sav","wb");fwrite(head,1,sizeof head,f);fwrite(&old,1,sizeof old,f);fclose(f);assert(rh_load(&out,"/tmp/v6check.sav"));assert(out.bank==g.bank&&out.player.fuel_pending==g.player.fuel_pending&&out.weather==3&&out.weather_mode==4&&out.job.stage==1);assert(out.player.road_level==(i==1?0:1));printf("v6 angle %.2f inferred level %d bank %.0f fuel pending %.4f\n",out.player.yaw,out.player.road_level,out.bank,out.player.fuel_pending);assert(rh_save(&out,"/tmp/v7check.sav"));Game again;assert(rh_load(&again,"/tmp/v7check.sav"));assert(memcmp(&out,&again,sizeof out)==0);}}
